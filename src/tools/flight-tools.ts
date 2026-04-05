@@ -1,9 +1,15 @@
+// 飛行（クリエイティブモードでの移動）に関するツール
+// - クリエイティブでのみ利用可能な `flyTo` を使って特定座標へ飛行します。
+// - キャンセルやタイムアウト処理の仕組みを持っています。
 import { z } from "zod";
 import mineflayer from 'mineflayer';
 import { Vec3 } from 'vec3';
 import { ToolFactory } from '../tool-factory.js';
 import { coerceCoordinates } from './coordinate-utils.js';
 
+// クリエイティブ飛行操作をラップしてキャンセル可能にするユーティリティ
+// - AbortController を受け取り、タイムアウトや外部キャンセルで安全に中断できる。
+// - Mineflayer の `creative.flyTo()` は Promise を返すため、その完了/失敗を伝搬する。
 function createCancellableFlightOperation(
   bot: mineflayer.Bot,
   destination: Vec3,

@@ -1,3 +1,6 @@
+// 炉（かまど）操作に関するツール
+// - かまど、溶鉱炉、燻製器などでの精錬処理を自動化します。
+// - 入力、燃料の投入、出力の取得を扱います。
 import { z } from "zod";
 import mineflayer from 'mineflayer';
 import type { Item } from 'prismarine-item';
@@ -116,7 +119,8 @@ async function waitForOutput(furnace: mineflayer.Furnace, timeoutMs: number): Pr
   if (existing) {
     return existing;
   }
-
+  // 出力スロットが空の場合は 'update' イベントを監視して出力が揃うのを待つ
+  // - タイムアウトを設定して長時間待たないようにする
   return new Promise((resolve) => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 

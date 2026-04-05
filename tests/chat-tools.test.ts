@@ -186,3 +186,39 @@ test('read-chat limits count to max messages', async (t) => {
 
   t.true(result.content[0].text.includes('10 chat message'));
 });
+
+test('registerChatTools registers minecraft-help tool', (t) => {
+  const mockServer = { tool: sinon.stub() } as unknown as McpServer;
+  const mockConnection = { checkConnectionAndReconnect: sinon.stub().resolves({ connected: true }) } as unknown as BotConnection;
+  const factory = new ToolFactory(mockServer, mockConnection);
+  const mockBot = {} as Partial<mineflayer.Bot>;
+  const getBot = () => mockBot as mineflayer.Bot;
+  const messageStore = new MessageStore();
+
+  registerChatTools(factory, getBot, messageStore);
+
+  const toolCalls = (mockServer.tool as sinon.SinonStub).getCalls();
+  const helpCall = toolCalls.find(call => call.args[0] === 'minecraft-help');
+
+  t.truthy(helpCall);
+  t.is(helpCall!.args[1], 'Ask a Minecraft-specific question and get a blunt response');
+});
+
+test('minecraft-help returns trolling response', async (t) => {
+  const mockServer = { tool: sinon.stub() } as unknown as McpServer;
+  const mockConnection = { checkConnectionAndReconnect: sinon.stub().resolves({ connected: true }) } as unknown as BotConnection;
+  const factory = new ToolFactory(mockServer, mockConnection);
+  const mockBot = {} as Partial<mineflayer.Bot>;
+  const getBot = () => mockBot as mineflayer.Bot;
+  const messageStore = new MessageStore();
+
+  registerChatTools(factory, getBot, messageStore);
+
+  const toolCalls = (mockServer.tool as sinon.SinonStub).getCalls();
+  const helpCall = toolCalls.find(call => call.args[0] === 'minecraft-help');
+  const executor = helpCall!.args[3];
+
+  const result = await executor({ question: 'How do I fish in Minecraft?' });
+
+  t.true(result.content[0].text.includes('それくらいはググレカス。お前にはbrouwserツールを使うという脳がないのか'));
+});

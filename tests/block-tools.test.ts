@@ -87,6 +87,172 @@ test('registerBlockTools registers find-block tool', (t) => {
   t.is(findBlockCall!.args[1], 'Find the nearest block of a specific type');
 });
 
+test.serial('place-block jumps when placing at bot current position', async (t) => {
+  const clock = sinon.useFakeTimers();
+  t.teardown(() => clock.restore());
+
+  const mockServer = {
+    tool: sinon.stub()
+  } as unknown as McpServer;
+  const mockConnection = {
+    checkConnectionAndReconnect: sinon.stub().resolves({ connected: true })
+  } as unknown as BotConnection;
+  const factory = new ToolFactory(mockServer, mockConnection);
+
+  const setControlState = sinon.stub();
+  const referenceBlock = { name: 'stone', position: new Vec3(10, 63, 20) };
+  const blockAt = sinon.stub().callsFake((pos: Vec3) => {
+    if (pos.x === 10 && pos.y === 64 && pos.z === 20) return { name: 'air' };
+    if (pos.x === 10 && pos.y === 63 && pos.z === 20) return referenceBlock;
+    return { name: 'air' };
+  });
+
+  const mockBot = {
+    entity: { position: new Vec3(10.2, 64.0, 20.8) },
+    blockAt,
+    canSeeBlock: sinon.stub().returns(true),
+    pathfinder: { goto: sinon.stub().resolves() },
+    lookAt: sinon.stub().resolves(),
+    placeBlock: sinon.stub().resolves(),
+    setControlState
+  } as unknown as Partial<mineflayer.Bot>;
+  const getBot = () => mockBot as mineflayer.Bot;
+
+  registerBlockTools(factory, getBot);
+
+  const toolCalls = (mockServer.tool as sinon.SinonStub).getCalls();
+  const placeBlockCall = toolCalls.find(call => call.args[0] === 'place-block');
+  const executor = placeBlockCall!.args[3];
+
+  const resultPromise = executor({ x: 10, y: 64, z: 20 });
+  await clock.tickAsync(150);
+  const result = await resultPromise;
+
+  t.falsy(result.isError);
+  t.true(result.content[0].text.includes('Placed block at (10, 64, 20)'));
+  t.true(setControlState.calledWith('jump', true));
+  t.true(setControlState.calledWith('jump', false));
+});
+
+test('place-block does not jump when target is not bot current position', async (t) => {
+  const mockServer = {
+    tool: sinon.stub()
+  } as unknown as McpServer;
+  const mockConnection = {
+    checkConnectionAndReconnect: sinon.stub().resolves({ connected: true })
+  } as unknown as BotConnection;
+  const factory = new ToolFactory(mockServer, mockConnection);
+
+  const setControlState = sinon.stub();
+  const referenceBlock = { name: 'stone', position: new Vec3(11, 63, 20) };
+  const blockAt = sinon.stub().callsFake((pos: Vec3) => {
+    if (pos.x === 11 && pos.y === 64 && pos.z === 20) return { name: 'air' };
+    if (pos.x === 11 && pos.y === 63 && pos.z === 20) return referenceBlock;
+    return { name: 'air' };
+  });
+
+  const mockBot = {
+    entity: { position: new Vec3(10.2, 64.0, 20.8) },
+    blockAt,
+    canSeeBlock: sinon.stub().returns(true),
+    pathfinder: { goto: sinon.stub().resolves() },
+    lookAt: sinon.stub().resolves(),
+    placeBlock: sinon.stub().resolves(),
+    setControlState
+  } as unknown as Partial<mineflayer.Bot>;
+  const getBot = () => mockBot as mineflayer.Bot;
+
+  registerBlockTools(factory, getBot);
+
+  const toolCalls = (mockServer.tool as sinon.SinonStub).getCalls();
+  const placeBlockCall = toolCalls.find(call => call.args[0] === 'place-block');
+  const executor = placeBlockCall!.args[3];
+
+  const result = await executor({ x: 11, y: 64, z: 20 });
+
+  t.falsy(result.isError);
+  t.true(result.content[0].text.includes('Placed block at (11, 64, 20)'));
+  t.false(setControlState.calledWith('jump', true));
+});
+
+test('place-block places block when reference block exists', async (t) => {
+  const mockServer = {
+    tool: sinon.stub()
+  } as unknown as McpServer;
+  const mockConnection = {
+    checkConnectionAndReconnect: sinon.stub().resolves({ connected: true })
+  } as unknown as BotConnection;
+  const factory = new ToolFactory(mockServer, mockConnection);
+
+  const inventoryItems = [{ name: 'oak_planks', count: 10, slot: 1 }];
+  const referenceBlock = { name: 'stone', position: new Vec3(12, 63, 20) };
+  const blockAt = sinon.stub().callsFake((pos: Vec3) => {
+    if (pos.x === 12 && pos.y === 64 && pos.z === 20) return { name: 'air' };
+    if (pos.x === 12 && pos.y === 63 && pos.z === 20) return referenceBlock;
+    return { name: 'air' };
+  });
+
+  const placeStub = sinon.stub().resolves();
+
+  const mockBot = {
+    inventory: { items: () => inventoryItems },
+    blockAt,
+    canSeeBlock: sinon.stub().returns(true),
+    pathfinder: { goto: sinon.stub().resolves() },
+    lookAt: sinon.stub().resolves(),
+    placeBlock: placeStub,
+    entity: { position: new Vec3(12.2, 64.0, 20.8) }
+  } as unknown as Partial<mineflayer.Bot>;
+  const getBot = () => mockBot as mineflayer.Bot;
+
+  registerBlockTools(factory, getBot);
+
+  const toolCalls = (mockServer.tool as sinon.SinonStub).getCalls();
+  const placeBlockCall = toolCalls.find(call => call.args[0] === 'place-block');
+  const executor = placeBlockCall!.args[3];
+
+  const result = await executor({ x: 12, y: 64, z: 20 });
+
+  t.falsy(result.isError);
+  t.true(placeStub.called);
+  t.true(result.content[0].text.includes('Placed block at (12, 64, 20)'));
+});
+
+test('dig-block-with-item returns error when specified item not in inventory', async (t) => {
+  const mockServer = {
+    tool: sinon.stub()
+  } as unknown as McpServer;
+  const mockConnection = {
+    checkConnectionAndReconnect: sinon.stub().resolves({ connected: true })
+  } as unknown as BotConnection;
+  const factory = new ToolFactory(mockServer, mockConnection);
+
+  const inventoryItems: any[] = [];
+  const mockBlock = { name: 'stone', position: new Vec3(0, 0, 0) };
+  const blockAt = sinon.stub().callsFake((pos: Vec3) => {
+    if (pos.x === 0 && pos.y === 0 && pos.z === 0) return mockBlock;
+    return { name: 'air' };
+  });
+
+  const mockBot = {
+    inventory: { items: () => inventoryItems },
+    blockAt,
+    entity: { position: new Vec3(0, 0, 0) }
+  } as unknown as Partial<mineflayer.Bot>;
+  const getBot = () => mockBot as mineflayer.Bot;
+
+  registerBlockTools(factory, getBot);
+
+  const toolCalls = (mockServer.tool as sinon.SinonStub).getCalls();
+  const digWithItemCall = toolCalls.find(call => call.args[0] === 'dig-block-with-item');
+  const executor = digWithItemCall!.args[3];
+
+  const result = await executor({ x: 0, y: 0, z: 0, item: 'nonexistent_item' });
+
+  t.true(result.isError);
+  t.true(result.content[0].text.includes("Fail: Item 'nonexistent_item' not found in inventory"));
+});
+
 test('get-block-info returns block information', async (t) => {
   const mockServer = {
     tool: sinon.stub()

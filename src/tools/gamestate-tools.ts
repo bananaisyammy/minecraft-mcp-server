@@ -1,3 +1,5 @@
+// ゲーム状態に関する簡易ツール群
+// - 現在のゲームモード（サバイバル/クリエイティブ等）を検出するユーティリティを提供します。
 import mineflayer from 'mineflayer';
 import { ToolFactory } from '../tool-factory.js';
 

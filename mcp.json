@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "minecraft": {
+      "command": "cmd.exe",
+      "args": [
+        "/c",
+        "cd hoge && node scripts/start-mcp.js --host localhost --port 25565 --username MyBot"
+      ]
+    }
+  }
+}

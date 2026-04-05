@@ -1,3 +1,5 @@
+// インベントリ操作に関するツール群
+// - アイテム一覧を取得したり、アイテムを探したり、装備を行うためのヘルパーを登録します。
 import { z } from "zod";
 import mineflayer from 'mineflayer';
 import { ToolFactory } from '../tool-factory.js';
@@ -9,6 +11,11 @@ interface InventoryItem {
 }
 
 export function registerInventoryTools(factory: ToolFactory, getBot: () => mineflayer.Bot): void {
+  // インベントリ操作ツール群を登録する
+  // - 軽量なユーティリティのみを提供し、外部から簡単に在庫情報を取得・操作できるようにします。
+  // - 具体的には一覧取得、検索、装備といった操作を提供します。
+
+  // インベントリ内のすべてのアイテムを列挙するツール
   factory.registerTool(
     "list-inventory",
     "List all items in the bot's inventory",
@@ -26,6 +33,7 @@ export function registerInventoryTools(factory: ToolFactory, getBot: () => minef
         return factory.createResponse("Inventory is empty");
       }
 
+      // 読みやすいテキストを作って返却する
       let inventoryText = `Found ${items.length} items in inventory:\n\n`;
       itemList.forEach(item => {
         inventoryText += `- ${item.name} (x${item.count}) in slot ${item.slot}\n`;
@@ -35,6 +43,7 @@ export function registerInventoryTools(factory: ToolFactory, getBot: () => minef
     }
   );
 
+  // 名前でアイテムを検索するツール（部分一致）
   factory.registerTool(
     "find-item",
     "Find a specific item in the bot's inventory",
@@ -56,6 +65,7 @@ export function registerInventoryTools(factory: ToolFactory, getBot: () => minef
     }
   );
 
+  // 指定したアイテムを装備する（手に持つなど）
   factory.registerTool(
     "equip-item",
     "Equip a specific item",

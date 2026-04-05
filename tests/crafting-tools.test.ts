@@ -230,7 +230,7 @@ test('craft-item returns error when recipe not available', async (t) => {
   const craftItemCall = toolCalls.find(call => call.args[0] === 'craft-item');
   const executor = craftItemCall!.args[3];
 
-  const result = await executor({ outputItem: 'stick', amount: 1 });
+  const result = await executor({ outputItem: 'stick', amount: 1, preferredItems: ['oak_planks'] });
 
   t.true(result.content[0].text.length > 0);
   t.true(!!result.isError);
@@ -258,10 +258,13 @@ test('craft-item crafts successfully when ingredients are available', async (t) 
   const factory = new ToolFactory(mockServer, mockConnection);
 
   const craftStub = sinon.stub().resolves();
+  const recipesForStub = sinon.stub().returns([stickRecipe]); // recipesFor メソッドを追加
   const mockBot = {
     version: '1.21.8',
     inventory: { items: () => inventoryItems },
-    craft: craftStub
+    craft: craftStub,
+    recipesFor: recipesForStub,
+    findBlock: sinon.stub().returns(null) // 作業台なし
   } as unknown as mineflayer.Bot;
 
   registerCraftingTools(factory, () => mockBot);
@@ -269,11 +272,139 @@ test('craft-item crafts successfully when ingredients are available', async (t) 
   const craftItemCall = toolCalls.find(call => call.args[0] === 'craft-item');
   const executor = craftItemCall!.args[3];
 
-  const result = await executor({ outputItem: 'stick', amount: 1 });
+  const result = await executor({ outputItem: 'stick', amount: 1, preferredItems: inventoryItems.map(i => i.name) });
 
   t.true(craftStub.called);
   t.false(!!result.isError);
   t.true(result.content[0].text.toLowerCase().includes('successfully crafted'));
+});
+
+test('craft-item prioritizes recipes that include preferred items', async (t) => {
+  const version = '1.21.11';
+  const mcData = minecraftData(version);
+  const recipes = flattenRecipes((mcData as unknown as { recipes: unknown }).recipes);
+  const woodenPickaxeId = (mcData as unknown as { itemsByName: Record<string, { id: number }> }).itemsByName.wooden_pickaxe.id;
+
+  const woodenPickaxeRecipes = recipes.filter((recipe) => {
+    const r = recipe as Record<string, unknown>;
+    const result = r.result as Record<string, unknown> | undefined;
+    return !!result && typeof result.id === 'number' && result.id === woodenPickaxeId;
+  });
+
+  const oakRecipe = woodenPickaxeRecipes.find((recipe) => {
+    const counts = countRecipeIngredients(mcData, recipe);
+    return counts.oak_planks === 3 && counts.stick === 2;
+  });
+
+  const acaciaRecipe = woodenPickaxeRecipes.find((recipe) => {
+    const counts = countRecipeIngredients(mcData, recipe);
+    return counts.acacia_planks === 3 && counts.stick === 2;
+  });
+
+  t.truthy(oakRecipe);
+  t.truthy(acaciaRecipe);
+
+  const mockServer = { tool: sinon.stub() } as unknown as McpServer;
+  const mockConnection = { checkConnectionAndReconnect: sinon.stub().resolves({ connected: true }) } as unknown as BotConnection;
+  const factory = new ToolFactory(mockServer, mockConnection);
+
+  const craftStub = sinon.stub().resolves();
+  const recipesForStub = sinon.stub().returns([oakRecipe, acaciaRecipe]);
+  const mockBot = {
+    version,
+    inventory: { items: () => [] },
+    craft: craftStub,
+    recipesFor: recipesForStub,
+    findBlock: sinon.stub().returns(null)
+  } as unknown as mineflayer.Bot;
+
+  registerCraftingTools(factory, () => mockBot);
+  const toolCalls = (mockServer.tool as sinon.SinonStub).getCalls();
+  const craftItemCall = toolCalls.find(call => call.args[0] === 'craft-item');
+  const executor = craftItemCall!.args[3];
+
+  const result = await executor({ outputItem: 'wooden_pickaxe', amount: 1, preferredItems: ['acacia_planks'] });
+
+  t.false(!!result.isError);
+  t.true(craftStub.calledOnce);
+  const craftedCounts = countRecipeIngredients(mcData, craftStub.firstCall.args[0]);
+  t.is(craftedCounts.acacia_planks, 3);
+  t.is(craftedCounts.stick, 2);
+});
+
+test('craft-item falls back to all recipe variants when bot recipes are incomplete', async (t) => {
+  const version = '1.21.11';
+  const mcData = minecraftData(version);
+  const recipes = flattenRecipes((mcData as unknown as { recipes: unknown }).recipes);
+  const woodenPickaxeId = (mcData as unknown as { itemsByName: Record<string, { id: number }> }).itemsByName.wooden_pickaxe.id;
+
+  const woodenPickaxeRecipes = recipes.filter((recipe) => {
+    const r = recipe as Record<string, unknown>;
+    const result = r.result as Record<string, unknown> | undefined;
+    return !!result && typeof result.id === 'number' && result.id === woodenPickaxeId;
+  });
+
+  const oakRecipe = woodenPickaxeRecipes.find((recipe) => {
+    const counts = countRecipeIngredients(mcData, recipe);
+    return counts.oak_planks === 3 && counts.stick === 2;
+  });
+
+  t.truthy(oakRecipe);
+
+  const tableBlock = { id: 58, position: { x: 0, y: 64, z: 0 } };
+  const mockServer = { tool: sinon.stub() } as unknown as McpServer;
+  const mockConnection = { checkConnectionAndReconnect: sinon.stub().resolves({ connected: true }) } as unknown as BotConnection;
+  const factory = new ToolFactory(mockServer, mockConnection);
+
+  // Force bot.recipesFor to return nothing so the implementation falls
+  // back to using the full recipe list from minecraft-data.
+  const recipesForStub = sinon.stub().returns([]);
+
+  const inventoryItems = [
+    { name: 'crafting_table', count: 1, slot: 9 },
+    { name: 'oak_planks', count: 2, slot: 36 },
+    { name: 'acacia_planks', count: 3, slot: 37 },
+    { name: 'stick', count: 2, slot: 38 }
+  ];
+  const inventoryCounts = inventoryItems.reduce((acc, item) => {
+    acc[item.name] = (acc[item.name] || 0) + item.count;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const craftStub = sinon.stub().callsFake(async (recipe: unknown) => {
+    const counts = countRecipeIngredients(mcData, recipe);
+    const isMissing = Object.entries(counts).some(([name, count]) => (inventoryCounts[name] ?? 0) < count);
+    if (isMissing) {
+      throw new Error('Missing ingredients');
+    }
+  });
+  const mockBot = {
+    version,
+    inventory: {
+      items: () => inventoryItems
+    },
+    craft: craftStub,
+    recipesFor: recipesForStub,
+    findBlock: sinon.stub().returns(tableBlock)
+  } as unknown as mineflayer.Bot;
+
+  registerCraftingTools(factory, () => mockBot);
+
+  const toolCalls = (mockServer.tool as sinon.SinonStub).getCalls();
+  const craftItemCall = toolCalls.find(call => call.args[0] === 'craft-item');
+  const executor = craftItemCall!.args[3];
+
+  const result = await executor({ outputItem: 'wooden_pickaxe', amount: 1 });
+
+  t.false(!!result.isError);
+  t.true(result.content[0].text.toLowerCase().includes('successfully crafted'));
+  t.true(craftStub.called);
+  // Data-driven fallback recipes include craftingTable when available.
+  t.is(craftStub.lastCall.args.length, 3);
+
+  const craftedCounts = countRecipeIngredients(mcData, craftStub.lastCall.args[0]);
+  t.is(craftedCounts.acacia_planks, 3);
+  t.is(craftedCounts.stick, 2);
 });
 
 test('uses real minecraft-data recipes for version 1.21.8', async (t) => {

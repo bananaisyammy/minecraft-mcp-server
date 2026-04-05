@@ -82,13 +82,98 @@ Using Claude Sonnet could give you some interesting results. The bot-agent would
 
 Example usage: [shared Claude chat](https://claude.ai/share/535d5f69-f102-4cdb-9801-f74ea5709c0b)
 
+## MCP クライアント設定例 (mcp.json)
+
+多くの MCP 対応クライアントは、JSON で外部サーバの起動コマンドを指定できます。以下はよく使う例です。お使いのクライアントが期待するフィールド名（`command` / `exec` / `program` など）はクライアントによって異なるため、必要に応じて読み替えてください。
+
+- 例: `npx` で GitHub パッケージを直接起動する（Claude Desktop の設定と同様）
+
+```json
+{
+  "mcpServers": {
+    "minecraft": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "github:yuniko-software/minecraft-mcp-server",
+        "--host",
+        "localhost",
+        "--port",
+        "25565",
+        "--username",
+        "MyBot"
+      ]
+    }
+  }
+}
+```
+
+- 例: ローカル開発で `npm run dev` を使う場合（クライアントが `cwd` をサポートする想定）
+
+```json
+{
+  "mcpServers": {
+    "minecraft-local": {
+      "command": "npm",
+      "args": ["run", "dev"],
+      "cwd": "./path/to/minecraft-mcp-server"
+    }
+  }
+}
+```
+
+- 例: 事前に `npm run build` して `node dist/main.js` を実行する場合
+
+```json
+{
+  "mcpServers": {
+    "minecraft": {
+      "command": "node",
+      "args": ["dist/main.js", "--host", "localhost", "--port", "25565", "--username", "MyBot"],
+      "cwd": "./path/to/minecraft-mcp-server"
+    }
+  }
+}
+```
+
+注意点:
+- `cwd` はクライアントがサポートしている場合に指定します。ローカル起動時は必ず依存をインストールしてください（`npm ci`）。
+- `--host` / `--port` / `--username` は Minecraft サーバ接続に使われます。実環境の値に合わせてください。
+- クライアント固有の設定方法については、そのクライアントのドキュメントを参照してください。
+
+ローカルで動かすための簡単な手順:
+
+1. Node バージョンを切り替える（nvm を使用）:
+
+```bash
+nvm install 20.10.0
+nvm use 20.10.0
+```
+
+2. 依存をインストールしてビルド/開発モードで起動:
+
+```bash
+cd minecraft-mcp-server
+npm ci
+# 開発モード（ホットリロード）
+npm run dev
+# もしくはビルドして実行
+npm run build
+node dist/main.js --host localhost --port 25565 --username MyBot
+```
+
+3. Minecraft を開いて LAN で公開し、クライアント側の `mcp.json`（もしくはクライアントの設定ファイル）に上の `command`/`args` を設定して起動してください。
+
+リポジトリに `mcp.json.example` を追加しました。これをコピーして `mcp.json` として編集すると便利です。
+
 ## Available Commands
 
 Once connected to a Minecraft server, Claude can use these commands:
 
 ### Movement
 - `get-position` - Get the current position of the bot
-- `move-to-position` - Move to specific coordinates
+- `get-ground-y` - Get ground level Y (highest solid block + 1) for x/z
+- `move-to-position` - Move to specific coordinates (optional sprint; confirm Y with get-ground-y)
 - `look-at` - Make the bot look at specific coordinates
 - `jump` - Make the bot jump
 - `move-in-direction` - Move in a specific direction for a duration

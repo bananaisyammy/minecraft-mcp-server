@@ -339,7 +339,6 @@ export function registerBlockTools(factory: ToolFactory, getBot: () => mineflaye
               }
             } catch (err) {
               blocks.push({ x: xi, y: yi, z: zi, name: null, type: null });
-              console.warn(`Failed to get block at (${xi}, ${yi}, ${zi}): ${(err as Error).message}`);
             }
           }
         }
