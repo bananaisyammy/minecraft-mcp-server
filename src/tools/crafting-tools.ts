@@ -571,10 +571,8 @@ export function registerCraftingTools(factory: ToolFactory, getBot: () => minefl
     async ({ outputItem, amount = 1, preferredItems = [] }) => {
       // ユーザー入力の正規化: 大文字/空白を潰して検索用クエリを作る
       const outputQuery = normalizeItemName(outputItem);
-      const preferredSet = new Set(
-        preferredItems
-          .map((item) => normalizeItemName(item))
-          .filter((item) => item.length > 0)
+      const preferredSet = new Set<string>(
+        (preferredItems as string[]).map((item: string) => normalizeItemName(item)).filter((i: string) => i.length > 0)
       );
 
       // ボット参照を取得: 現在接続中の bot オブジェクトを使う
