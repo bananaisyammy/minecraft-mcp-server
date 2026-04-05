@@ -207,9 +207,10 @@ function collectAllCandidateRecipes(
   mcData: unknown,
   query: string,
   itemsById: McDataItemsById,
-  recipes: unknown[]
+  recipes: unknown[],
+  craftingTableOverride?: unknown | null
 ): CandidateRecipe[] {
-  const table = findNearbyCraftingTable(bot, mcData);
+  const table = craftingTableOverride === undefined ? findNearbyCraftingTable(bot, mcData) : craftingTableOverride;
   const candidatesFromBotNoTable = collectCandidateRecipesFromBot(bot, mcData, query, itemsById, null);
   const candidatesFromBotWithTable = table ? collectCandidateRecipesFromBot(bot, mcData, query, itemsById, table) : [];
   const candidatesFromData = collectCandidateRecipes(recipes, query, itemsById, table ?? undefined);
@@ -298,6 +299,24 @@ function prioritizeCandidatesByPreferredItems(
   }
 
   return [...preferred, ...others];
+}
+
+function recipeRequiresCraftingTable(recipe: unknown): boolean {
+  if (!recipe || typeof recipe !== 'object') return false;
+  const r = recipe as Record<string, unknown>;
+  if (typeof r.requiresTable === 'boolean') return r.requiresTable;
+
+  if (Array.isArray(r.inShape)) {
+    const rows = r.inShape as unknown[];
+    if (rows.length > 2) return true;
+    for (const row of rows) {
+      if (Array.isArray(row) && row.length > 2) return true;
+    }
+  }
+
+  if (Array.isArray(r.ingredients) && r.ingredients.length > 4) return true;
+
+  return false;
 }
 
 function parseRecipeIngredients(recipe: unknown, itemsById: McDataItemsById): RecipeIngredient[] {
@@ -592,13 +611,21 @@ export function registerCraftingTools(factory: ToolFactory, getBot: () => minefl
       let craftedCount = 0;
       let firstErrorMessage = "";
 
-      const candidates = collectAllCandidateRecipes(bot, mcData, outputQuery, itemsById, recipes);
+      const craftingTable = findNearbyCraftingTable(bot, mcData);
+      const candidates = collectAllCandidateRecipes(bot, mcData, outputQuery, itemsById, recipes, craftingTable);
       const orderedCandidates = prioritizeCandidatesByPreferredItems(candidates, preferredSet, itemsById);
+      const availableCandidates = craftingTable
+        ? orderedCandidates
+        : orderedCandidates.filter((candidate) => !recipeRequiresCraftingTable(candidate.recipe));
+
+      if (!craftingTable && orderedCandidates.length > 0 && availableCandidates.length === 0) {
+        return factory.createErrorResponse(`Failed to craft ${outputItem}: Crafting table required`);
+      }
 
       // 指定回数だけクラフトを試みるループ
       for (let attempt = 0; attempt < amount; attempt++) {
         let craftedThisAttempt = false;
-        for (const candidate of orderedCandidates) {
+        for (const candidate of availableCandidates) {
           try {
             // 作業台が必要なレシピかどうかで呼び出しシグネチャを変える
             if (candidate.craftingTable) {
@@ -620,14 +647,14 @@ export function registerCraftingTools(factory: ToolFactory, getBot: () => minefl
               `[craft-item] bot.craft failed for ${outputItem} using ${candidate.resultName}`,
               error.stack ?? error.message
             );
-            log('warn', `Failed to craft ${outputItem}: ${error.message}`);
+            log('warn', `(type 1)Failed to craft ${outputItem}: ${error.message}`);
           }
         }
 
         // 最初の試行で一つも作れなかった場合は、より詳細な理由（最小の不足リスト等）を返す
         if (!craftedThisAttempt && attempt === 0) {
           return factory.createErrorResponse(
-            `Failed to craft ${outputItem}: ${firstErrorMessage || 'Recipe not found or missing ingredients'}`
+            `(type 2)Failed to craft ${outputItem}: ${firstErrorMessage || 'Recipe not found or missing ingredients'}`
           );
         }
 
@@ -640,7 +667,7 @@ export function registerCraftingTools(factory: ToolFactory, getBot: () => minefl
       // 全ての試行が終わっても一つも作れなかった場合は失敗を返す
       if (craftedCount === 0) {
         return factory.createErrorResponse(
-          `Failed to craft ${outputItem}: ${firstErrorMessage || "Missing ingredients or recipe not found"}`
+          `(type 3)Failed to craft ${outputItem}: ${firstErrorMessage || "Missing ingredients or recipe not found"}`
         );
       }
 

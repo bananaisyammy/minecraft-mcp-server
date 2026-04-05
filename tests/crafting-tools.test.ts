@@ -308,6 +308,7 @@ test('craft-item prioritizes recipes that include preferred items', async (t) =>
   const mockConnection = { checkConnectionAndReconnect: sinon.stub().resolves({ connected: true }) } as unknown as BotConnection;
   const factory = new ToolFactory(mockServer, mockConnection);
 
+  const tableBlock = { id: 58, position: { x: 0, y: 64, z: 0 } };
   const craftStub = sinon.stub().resolves();
   const recipesForStub = sinon.stub().returns([oakRecipe, acaciaRecipe]);
   const mockBot = {
@@ -315,7 +316,7 @@ test('craft-item prioritizes recipes that include preferred items', async (t) =>
     inventory: { items: () => [] },
     craft: craftStub,
     recipesFor: recipesForStub,
-    findBlock: sinon.stub().returns(null)
+    findBlock: sinon.stub().returns(tableBlock)
   } as unknown as mineflayer.Bot;
 
   registerCraftingTools(factory, () => mockBot);
